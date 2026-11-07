@@ -62,8 +62,15 @@
     .mic-button:hover { filter:brightness(1.07); transform:translateY(-1px); }
     .mic-button.stop { color:#fbe9e5; background:#8d514c; }
     .statusline { padding:14px 22px 0; min-height:39px; color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px; }
-    .status-dot { display:inline-block; width:7px;height:7px;border-radius:50%;background:#718197; }
+    .status-dot { display:inline-block; width:7px;height:7px;border-radius:50%;background:#718197; flex:0 0 auto; }
     .statusline.active .status-dot { background:var(--green); box-shadow:0 0 9px rgba(167,226,177,.55); }
+    .input-monitor { margin:10px 22px 0; padding:12px 14px; border:1px solid var(--line); border-radius:13px; background:rgba(8,15,26,.25); }
+    .input-monitor-head { display:flex; justify-content:space-between; align-items:center; gap:10px; color:var(--muted); font-size:11px; margin-bottom:8px; }
+    .input-monitor-head strong { color:#dce7f1; font-size:11px; font-weight:600; }
+    .input-track { height:8px; border-radius:20px; background:rgba(255,255,255,.08); overflow:hidden; }
+    .input-level { height:100%; width:0%; border-radius:20px; background:linear-gradient(90deg,#80d6d1,#a7e2b1); transition:width .08s linear; }
+    .input-detail { margin-top:7px; color:var(--muted); font-size:10px; line-height:1.55; }
+    .diagnostic { margin:10px 22px 0; padding:10px 12px; border-radius:11px; background:rgba(128,214,209,.06); color:#b9cbd7; font-size:11px; line-height:1.6; }
     .tuner { padding:15px 24px 24px; text-align:center; }
     .detected-label { font-size:12px; color:var(--muted); letter-spacing:.12em; }
     .readout { display:flex; align-items:center; justify-content:center; gap:16px; margin:13px auto 3px; min-height:100px; }
@@ -171,6 +178,12 @@
       </div>
 
       <div id="statusLine" class="statusline"><i class="status-dot"></i><span id="statusText">开启麦克风后，拨响一根琴弦即可开始识别</span></div>
+      <div class="input-monitor" aria-live="polite">
+        <div class="input-monitor-head"><strong>麦克风输入电平</strong><span id="inputLevelText">尚未开启</span></div>
+        <div class="input-track"><div id="inputLevelBar" class="input-level"></div></div>
+        <div id="inputDetail" class="input-detail">开启麦克风后，这里会显示手机是否真正收到声音。</div>
+      </div>
+      <div id="diagnostic" class="diagnostic">诊断提示：等待麦克风启动。</div>
 
       <div class="tuner" aria-live="polite">
         <div class="detected-label">当前识别音高</div>
@@ -212,7 +225,8 @@
       <h3>调音小提示</h3>
       <p><b>偏低：</b>当前音低于目标音，需要适当拧紧弦轴，让音高升高。</p>
       <p><b>偏高：</b>当前音高于目标音，需要适当拧松弦轴，让音高降低。</p>
-      <p><b>拾音更稳定：</b>一次只拨一根空弦，尽量靠近麦克风；避开说话、其他弦共振和环境噪声。古筝调音请小幅、缓慢转动弦轴。</p>
+      <p><b>拾音更稳定：</b>一次只拨一根空弦，手机麦克风距离琴弦约 10–20 cm；避开说话、其他弦共振和环境噪声。古筝调音请小幅、缓慢转动弦轴。</p>
+      <p><b>输入电平：</b>拨弦时上方电平条应明显跳动。如果对着麦克风拍手也完全不动，说明声音没有进入浏览器音频输入，而不是音高算法的问题。</p>
       <p id="browserTip">麦克风需要浏览器授权；建议通过 localhost 或 HTTPS 打开本页面。</p>
     </aside>
   </main>
@@ -249,6 +263,8 @@
       let smoothedPitch = null;
       let activeString = null;
       let isRunning = false;
+      let timeDomainBuffer = null;
+      const RMS_GATE = 0.0003;
 
       function midiToName(midi) {
         const rounded = Math.round(midi);
@@ -371,28 +387,40 @@
         updateActiveString(null);
       }
 
-      // YIN 音高检测：比直接寻找波形峰值更不容易被古筝丰富的泛音误导。
-      function detectPitch(buffer, sampleRate) {
-        const size = buffer.length;
-        let mean = 0;
-        for (let i = 0; i < size; i++) mean += buffer[i];
-        mean /= size;
-        let rms = 0;
-        const centered = new Float32Array(size);
-        for (let i = 0; i < size; i++) {
-          const value = buffer[i] - mean;
-          centered[i] = value;
-          rms += value * value;
+      function updateInputMonitor(rms, peak, track) {
+        const db = rms > 0 ? 20 * Math.log10(rms) : -90;
+        const pct = Math.max(0, Math.min(100, ((db + 72) / 48) * 100));
+        el('inputLevelBar').style.width = `${pct}%`;
+        el('inputLevelText').textContent = `${db.toFixed(0)} dBFS · RMS ${rms.toFixed(4)}`;
+        const trackState = track ? `输入轨道：${track.readyState}${track.muted ? '（静音）' : ''} · ${track.enabled ? '已启用' : '已禁用'}` : '输入轨道：未连接';
+        el('inputDetail').textContent = `${trackState} · 峰值 ${peak.toFixed(4)}`;
+        if (rms < 0.00015) {
+          el('diagnostic').textContent = '诊断：几乎没有收到声音。请检查手机顶部/底部麦克风孔、系统麦克风总开关，暂时断开蓝牙耳机，再对手机麦克风轻声说话或拍手测试。';
+        } else if (rms < RMS_GATE) {
+          el('diagnostic').textContent = '诊断：收到的声音较弱，尚未达到音高分析门限。请把手机麦克风靠近琴弦（约 10–20 cm），拨弦稍用力；也可以观察拍手时电平是否明显上升。';
+        } else {
+          el('diagnostic').textContent = '诊断：麦克风已经收到声音。若电平明显跳动但仍未识别，请一次只拨一根空弦，并让琴声自然衰减一小会儿；程序正在分析周期性音高。';
         }
-        rms = Math.sqrt(rms / size);
-        if (rms < 0.008) return null;
+      }
 
-        const minFreq = 65;
+      // YIN 音高检测。先将相邻样本平均降采样，减少手机端每帧运算量。
+      function detectPitch(buffer, sampleRate, rms) {
+        if (rms < RMS_GATE) return null;
+        const size = Math.floor(buffer.length / 2);
+        const centered = new Float32Array(size);
+        let mean = 0;
+        for (let i = 0; i < size; i++) {
+          centered[i] = (buffer[i * 2] + buffer[i * 2 + 1]) * 0.5;
+          mean += centered[i];
+        }
+        mean /= size;
+        for (let i = 0; i < size; i++) centered[i] -= mean;
+        sampleRate *= 0.5;
+        const minFreq = 60;
         const maxFreq = 1350;
         const minTau = Math.max(2, Math.floor(sampleRate / maxFreq));
         const maxTau = Math.min(Math.floor(sampleRate / minFreq), Math.floor(size / 2));
         const compareLength = size - maxTau;
-        const difference = new Float32Array(maxTau + 1);
         const cmnd = new Float32Array(maxTau + 1);
         let runningSum = 0;
         for (let tau = 1; tau <= maxTau; tau++) {
@@ -401,7 +429,6 @@
             const delta = centered[i] - centered[i + tau];
             sum += delta * delta;
           }
-          difference[tau] = sum;
           runningSum += sum;
           cmnd[tau] = runningSum > 0 ? (sum * tau) / runningSum : 1;
         }
@@ -435,17 +462,38 @@
       function processAudio(timestamp) {
         if (!isRunning || !analyser) return;
         rafId = requestAnimationFrame(processAudio);
-        if (timestamp - lastProcessAt < 55) return;
+        if (timestamp - lastProcessAt < 65) return;
         lastProcessAt = timestamp;
-        const data = new Float32Array(analyser.fftSize);
-        analyser.getFloatTimeDomainData(data);
-        const pitch = detectPitch(data, audioContext.sampleRate);
+        if (!timeDomainBuffer || timeDomainBuffer.length !== analyser.fftSize) {
+          timeDomainBuffer = new Float32Array(analyser.fftSize);
+        }
+        analyser.getFloatTimeDomainData(timeDomainBuffer);
+        let mean = 0;
+        let peak = 0;
+        for (let i = 0; i < timeDomainBuffer.length; i++) {
+          mean += timeDomainBuffer[i];
+          const abs = Math.abs(timeDomainBuffer[i]);
+          if (abs > peak) peak = abs;
+        }
+        mean /= timeDomainBuffer.length;
+        let sumSquares = 0;
+        for (let i = 0; i < timeDomainBuffer.length; i++) {
+          const value = timeDomainBuffer[i] - mean;
+          sumSquares += value * value;
+        }
+        const rms = Math.sqrt(sumSquares / timeDomainBuffer.length);
+        const track = mediaStream ? mediaStream.getAudioTracks()[0] : null;
+        updateInputMonitor(rms, peak, track);
+        const pitch = detectPitch(timeDomainBuffer, audioContext.sampleRate, rms);
         if (pitch === null) {
           history = [];
           if (timestamp - lastDetectedAt > 1200) {
             if (smoothedPitch !== null) {
               smoothedPitch = null;
               clearMeasurementForSilence();
+            } else if (rms >= RMS_GATE) {
+              el('statusText').textContent = '已收到声音 · 正在寻找稳定音高';
+              statusLine.classList.add('active');
             } else {
               el('statusText').textContent = '正在监听 · 请拨响一根琴弦';
             }
@@ -462,20 +510,65 @@
       }
 
       async function startMic() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          el('statusText').textContent = '当前页面无法访问麦克风，请使用最新版 Chrome / Edge，并通过 localhost 或 HTTPS 打开。';
+        // 先判断页面环境，避免把安全上下文问题误报成普通权限拒绝。
+        if (!window.isSecureContext) {
+          el('statusText').textContent = '当前网页不是安全连接。请使用 https:// 开头的 GitHub Pages 地址，或 localhost 地址打开。';
           el('statusText').classList.add('error');
           return;
         }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          el('statusText').textContent = '当前浏览器环境不支持网页麦克风。请用 Safari 或 Chrome 的独立浏览器页面打开，不要使用应用内置浏览器。';
+          el('statusText').classList.add('error');
+          return;
+        }
+
+        let stage = '准备音频引擎';
         try {
           micButton.disabled = true;
-          micButton.textContent = '正在请求权限…';
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
-          });
+          micButton.textContent = '正在启动…';
+          el('statusText').classList.remove('error');
+
+          // 移动浏览器通常要求 AudioContext.resume() 直接发生在用户点击手势中。
+          // 因此在第一个 await 之前创建并启动 AudioContext。
           const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContextClass) throw new Error('此浏览器不支持 Web Audio API。');
           audioContext = new AudioContextClass();
+          const resumeResult = audioContext.state === 'suspended'
+            ? audioContext.resume().then(() => null).catch(error => error)
+            : Promise.resolve(null);
+
+          stage = '申请麦克风权限';
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true }
+            });
+          } catch (firstError) {
+            // 一些移动设备不允许关闭音频处理选项；退回浏览器默认音频配置再试一次。
+            if (firstError && (firstError.name === 'OverconstrainedError' || firstError.name === 'TypeError')) {
+              mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } else {
+              throw firstError;
+            }
+          }
+
+          stage = '启动音频引擎';
+          const resumeError = await resumeResult;
+          if (resumeError) throw resumeError;
           if (audioContext.state === 'suspended') await audioContext.resume();
+          if (audioContext.state !== 'running') {
+            throw new Error(`AudioContext 当前状态为 ${audioContext.state}，未能启动音频分析。`);
+          }
+
+          const audioTrack = mediaStream.getAudioTracks()[0];
+          if (!audioTrack) throw new Error('浏览器未返回音频输入轨道。');
+          audioTrack.enabled = true;
+          const trackSettings = audioTrack.getSettings ? audioTrack.getSettings() : {};
+          const actualInput = [
+            trackSettings.sampleRate ? `${trackSettings.sampleRate} Hz` : '',
+            trackSettings.channelCount ? `${trackSettings.channelCount} 声道` : '',
+            trackSettings.autoGainControl === undefined ? '' : `AGC ${trackSettings.autoGainControl ? '开' : '关'}`
+          ].filter(Boolean).join(' · ');
+          el('inputDetail').textContent = `音频轨道已连接 · ${audioTrack.label || '默认麦克风'} · AudioContext ${audioContext.sampleRate} Hz${actualInput ? ` · ${actualInput}` : ''}`;
           sourceNode = audioContext.createMediaStreamSource(mediaStream);
           analyser = audioContext.createAnalyser();
           analyser.fftSize = 4096;
@@ -488,19 +581,38 @@
           micButton.textContent = '关闭麦克风';
           micButton.classList.add('stop');
           statusLine.classList.add('active');
-          el('statusText').classList.remove('error');
           el('statusText').textContent = '麦克风已开启 · 请拨响一根空弦';
+          el('inputLevelText').textContent = '正在检测输入';
+          el('diagnostic').textContent = '诊断：麦克风已连接，观察输入电平是否随琴声起伏。';
           rafId = requestAnimationFrame(processAudio);
         } catch (error) {
+          // 失败时释放已申请到的麦克风和音频资源，允许用户修改设置后重试。
+          if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+          if (sourceNode) { try { sourceNode.disconnect(); } catch (_) {} }
+          if (audioContext) { try { await audioContext.close(); } catch (_) {} }
+          mediaStream = sourceNode = audioContext = analyser = null;
           micButton.disabled = false;
           micButton.textContent = '开启麦克风';
-          const message = error && error.name === 'NotAllowedError'
-            ? '麦克风权限被拒绝。请在浏览器地址栏的站点设置中允许麦克风后重试。'
-            : error && error.name === 'NotFoundError'
-              ? '没有检测到可用麦克风。请连接麦克风或检查系统输入设备。'
-              : `无法开启麦克风：${error.message || error}`;
+          micButton.classList.remove('stop');
+
+          const name = error && error.name ? error.name : 'UnknownError';
+          let message;
+          if (stage === '申请麦克风权限' && name === 'NotAllowedError') {
+            message = '浏览器/系统没有向当前网页开放麦克风。NotAllowedError 不一定表示你刚刚点了拒绝：也可能是系统麦克风权限、当前站点权限、非 HTTPS 页面或浏览器内置网页容器拦截。';
+          } else if (stage === '启动音频引擎' && name === 'NotAllowedError') {
+            message = '麦克风可能已经授权，但浏览器阻止了音频引擎启动。请重新点击开启；若仍失败，请换 Safari/Chrome 的独立浏览器页面。';
+          } else if (name === 'NotFoundError') {
+            message = '没有检测到可用麦克风。请检查设备是否有麦克风，以及系统是否禁用了输入设备。';
+          } else if (name === 'NotReadableError' || name === 'AbortError') {
+            message = '浏览器已尝试访问麦克风，但设备不可读取。请关闭正在占用麦克风的通话/录音应用后重试。';
+          } else if (name === 'OverconstrainedError') {
+            message = `设备不支持所需的音频配置（${error.constraint || '未知配置'}）。请换一个浏览器或输入设备。`;
+          } else {
+            message = `${stage}失败：${name}${error && error.message ? ` · ${error.message}` : ''}`;
+          }
           el('statusText').textContent = message;
           el('statusText').classList.add('error');
+          el('diagnostic').textContent = `启动失败诊断：${name} · ${message}`;
         }
       }
       async function stopMic() {
@@ -515,6 +627,10 @@
         micButton.textContent = '开启麦克风';
         micButton.classList.remove('stop');
         resetReadout();
+        el('inputLevelBar').style.width = '0%';
+        el('inputLevelText').textContent = '尚未开启';
+        el('inputDetail').textContent = '麦克风已关闭。';
+        el('diagnostic').textContent = '诊断提示：等待麦克风启动。';
       }
 
       keySelect.addEventListener('change', () => {
