@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111827" />
+  <title>筝音 · 古筝调音器</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101725;
+      --panel: #192437;
+      --panel-2: #202e43;
+      --line: rgba(222, 232, 247, .12);
+      --muted: #98a8bd;
+      --text: #f3f6fb;
+      --cyan: #80d6d1;
+      --green: #a7e2b1;
+      --yellow: #f2cf83;
+      --red: #f0a18e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 15% 0%, rgba(83, 132, 151, .17), transparent 42%),
+        radial-gradient(ellipse at 95% 100%, rgba(126, 101, 154, .14), transparent 42%),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      display: flex;
+      justify-content: center;
+      padding: 34px 18px 48px;
+    }
+    button, select { font: inherit; }
+    .app { width: min(100%, 760px); }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:24px; }
+    .brand { display:flex; align-items:center; gap:12px; }
+    .brand-mark {
+      width:42px; height:42px; border-radius:14px; display:grid; place-items:center;
+      background: linear-gradient(145deg, rgba(128,214,209,.23), rgba(128,214,209,.06));
+      border:1px solid rgba(128,214,209,.27); color:var(--cyan); font-size:22px;
+    }
+    h1 { font-size:20px; letter-spacing:.06em; margin:0 0 3px; font-weight:650; }
+    .subtitle { font-size:12px; color:var(--muted); }
+    .privacy { color:#a9c5bf; font-size:11px; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+    .privacy::before { content:""; width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 10px rgba(167,226,177,.55); }
+    .panel { background:linear-gradient(145deg, rgba(31,45,66,.96), rgba(22,33,50,.96)); border:1px solid var(--line); border-radius:22px; box-shadow:0 24px 70px rgba(0,0,0,.25); overflow:hidden; }
+    .top-controls { padding:20px 22px; display:flex; flex-wrap:wrap; align-items:end; justify-content:space-between; gap:16px; border-bottom:1px solid var(--line); }
+    .field { display:flex; flex-direction:column; gap:7px; min-width:145px; }
+    .field label { font-size:11px; color:var(--muted); letter-spacing:.06em; }
+    select {
+      appearance:none; color:var(--text); background:var(--panel-2); border:1px solid rgba(222,232,247,.15); border-radius:11px;
+      padding:10px 36px 10px 12px; outline:none; min-width:145px;
+      background-image:linear-gradient(45deg, transparent 50%, #9fb0c4 50%),linear-gradient(135deg, #9fb0c4 50%, transparent 50%);
+      background-position:calc(100% - 17px) 17px,calc(100% - 12px) 17px;background-size:5px 5px;background-repeat:no-repeat;
+    }
+    select:focus-visible, button:focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
+    .control-left { display:flex; gap:12px; flex-wrap:wrap; }
+    .mic-button { border:0; border-radius:12px; padding:11px 19px; color:#10212b; background:var(--cyan); font-weight:700; cursor:pointer; min-width:142px; transition:transform .15s,filter .15s; }
+    .mic-button:hover { filter:brightness(1.07); transform:translateY(-1px); }
+    .mic-button.stop { color:#fbe9e5; background:#8d514c; }
+    .statusline { padding:14px 22px 0; min-height:39px; color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px; }
+    .status-dot { display:inline-block; width:7px;height:7px;border-radius:50%;background:#718197; }
+    .statusline.active .status-dot { background:var(--green); box-shadow:0 0 9px rgba(167,226,177,.55); }
+    .tuner { padding:15px 24px 24px; text-align:center; }
+    .detected-label { font-size:12px; color:var(--muted); letter-spacing:.12em; }
+    .readout { display:flex; align-items:center; justify-content:center; gap:16px; margin:13px auto 3px; min-height:100px; }
+    .note { font-size:clamp(58px, 12vw, 88px); font-weight:650; line-height:1; letter-spacing:-.055em; color:#f6f8fb; }
+    .string-pill { align-self:center; border:1px solid rgba(128,214,209,.28); color:var(--cyan); background:rgba(128,214,209,.09); padding:8px 12px; border-radius:999px; font-size:13px; white-space:nowrap; }
+    .frequency { color:#b7c4d4; font-variant-numeric:tabular-nums; font-size:14px; margin-top:4px; }
+    .meter-wrap { margin:29px auto 0; max-width:560px; }
+    .meter-labels { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin:0 1px 10px; }
+    .meter { height:10px; position:relative; border-radius:20px; background:linear-gradient(90deg, #b9786d 0%, #d5ad77 36%, #536e75 48%, #80c89c 50%, #536e75 52%, #d5ad77 64%, #b9786d 100%); box-shadow:inset 0 1px 3px rgba(0,0,0,.3); }
+    .meter::after { content:""; position:absolute; top:-5px; bottom:-5px; left:50%; width:1px; background:rgba(255,255,255,.7); }
+    .needle { position:absolute; top:-8px; left:50%; width:3px; height:26px; border-radius:3px; background:white; box-shadow:0 0 9px rgba(255,255,255,.65); transform:translateX(-50%); transition:left .12s ease-out; }
+    .cents { margin-top:14px; font-size:30px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-.03em; }
+    .cents small { color:var(--muted); font-size:12px; font-weight:450; letter-spacing:0; margin-left:4px; }
+    .verdict { margin:15px auto 0; width:min(100%, 390px); border-radius:14px; padding:13px 16px; background:rgba(255,255,255,.045); border:1px solid var(--line); }
+    .verdict strong { font-size:19px; display:block; margin-bottom:4px; }
+    .verdict span { color:var(--muted); font-size:12px; }
+    .verdict.good strong { color:var(--green); }
+    .verdict.high strong { color:var(--yellow); }
+    .verdict.low strong { color:var(--cyan); }
+    .verdict.wait strong { color:#bac8d8; }
+    .target-row { display:flex; justify-content:center; gap:30px; margin-top:20px; flex-wrap:wrap; }
+    .target-item { min-width:115px; }
+    .target-item .k { color:var(--muted); font-size:11px; margin-bottom:5px; }
+    .target-item .v { font-size:17px; font-variant-numeric:tabular-nums; }
+    .target-item .v small { color:var(--muted); font-size:11px; margin-left:4px; }
+    .strings-section { padding:19px 22px 22px; border-top:1px solid var(--line); }
+    .section-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+    .section-head h2 { margin:0; font-size:13px; letter-spacing:.04em; font-weight:600; }
+    .section-head span { font-size:11px; color:var(--muted); }
+    .strings { display:grid; grid-template-columns:repeat(7,1fr); gap:7px; }
+    .string-btn { padding:9px 3px 8px; border-radius:10px; border:1px solid rgba(222,232,247,.1); background:rgba(255,255,255,.035); color:#dce4ee; cursor:pointer; min-width:0; transition:background .12s,border .12s; }
+    .string-btn:hover { background:rgba(255,255,255,.08); }
+    .string-btn .num { display:block; color:var(--muted); font-size:10px; margin-bottom:5px; }
+    .string-btn .pitch { display:block; font-size:13px; font-weight:650; }
+    .string-btn.active { background:rgba(128,214,209,.13); border-color:rgba(128,214,209,.55); color:#d9fffa; }
+    .string-btn.active .num { color:#a9deda; }
+    .string-btn.tuned { border-color:rgba(167,226,177,.3); }
+    .footer-note { margin:15px 2px 0; color:var(--muted); font-size:11px; line-height:1.7; }
+    .help { margin-top:15px; padding:16px 18px; border:1px solid var(--line); border-radius:16px; background:rgba(25,36,55,.72); }
+    .help h3 { margin:0 0 8px; font-size:12px; }
+    .help p { margin:5px 0; color:var(--muted); font-size:11px; line-height:1.7; }
+    .help b { color:#d7e2ed; font-weight:600; }
+    .error { color:#ffb3a6 !important; }
+    @media (max-width:560px) {
+      body { padding:22px 12px 32px; }
+      header { align-items:flex-start; }
+      .privacy { font-size:10px; padding-top:5px; }
+      .top-controls { padding:16px; }
+      .control-left { width:100%; }
+      .field { flex:1; min-width:125px; }
+      select { width:100%; min-width:0; }
+      .mic-button { width:100%; }
+      .tuner { padding:17px 16px 21px; }
+      .strings-section { padding:17px 13px 18px; }
+      .strings { grid-template-columns:repeat(5,1fr); }
+      .target-row { gap:18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div class="brand">
+        <div class="brand-mark">筝</div>
+        <div>
+          <h1>筝音 · 古筝调音器</h1>
+          <div class="subtitle">21 弦 · 实时拾音 · 自动识别</div>
+        </div>
+      </div>
+      <div class="privacy">音频仅在本机分析</div>
+    </header>
+
+    <section class="panel">
+      <div class="top-controls">
+        <div class="control-left">
+          <div class="field">
+            <label for="keySelect">定弦调式</label>
+            <select id="keySelect" aria-label="选择定弦调式">
+              <option value="D" selected>D 调 · 标准</option>
+              <option value="G">G 调</option>
+              <option value="C">C 调</option>
+              <option value="F">F 调</option>
+              <option value="A">A 调</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="stringSelect">琴弦识别</label>
+            <select id="stringSelect" aria-label="自动或手动选择琴弦">
+              <option value="auto" selected>自动识别</option>
+              <option value="21">手动：第 21 弦</option><option value="20">手动：第 20 弦</option>
+              <option value="19">手动：第 19 弦</option><option value="18">手动：第 18 弦</option>
+              <option value="17">手动：第 17 弦</option><option value="16">手动：第 16 弦</option>
+              <option value="15">手动：第 15 弦</option><option value="14">手动：第 14 弦</option>
+              <option value="13">手动：第 13 弦</option><option value="12">手动：第 12 弦</option>
+              <option value="11">手动：第 11 弦</option><option value="10">手动：第 10 弦</option>
+              <option value="9">手动：第 9 弦</option><option value="8">手动：第 8 弦</option>
+              <option value="7">手动：第 7 弦</option><option value="6">手动：第 6 弦</option>
+              <option value="5">手动：第 5 弦</option><option value="4">手动：第 4 弦</option>
+              <option value="3">手动：第 3 弦</option><option value="2">手动：第 2 弦</option>
+              <option value="1">手动：第 1 弦</option>
+            </select>
+          </div>
+        </div>
+        <button id="micButton" class="mic-button" type="button">开启麦克风</button>
+      </div>
+
+      <div id="statusLine" class="statusline"><i class="status-dot"></i><span id="statusText">开启麦克风后，拨响一根琴弦即可开始识别</span></div>
+
+      <div class="tuner" aria-live="polite">
+        <div class="detected-label">当前识别音高</div>
+        <div class="readout">
+          <div id="noteName" class="note">—</div>
+          <div id="stringPill" class="string-pill">等待识别</div>
+        </div>
+        <div id="frequency" class="frequency">— Hz</div>
+
+        <div class="meter-wrap">
+          <div class="meter-labels"><span>♭ 偏低 · 拧紧</span><span>调准</span><span>偏高 · 拧松 ♯</span></div>
+          <div class="meter"><div id="needle" class="needle"></div></div>
+          <div id="cents" class="cents">— <small>音分</small></div>
+        </div>
+
+        <div id="verdict" class="verdict wait">
+          <strong id="verdictTitle">等待琴声</strong>
+          <span id="verdictHint">请先开启麦克风，再单独拨响一根空弦</span>
+        </div>
+
+        <div class="target-row">
+          <div class="target-item"><div class="k">识别琴弦</div><div id="targetString" class="v">—</div></div>
+          <div class="target-item"><div class="k">目标音</div><div id="targetNote" class="v">—</div></div>
+          <div class="target-item"><div class="k">目标频率</div><div id="targetFreq" class="v">— <small>Hz</small></div></div>
+        </div>
+      </div>
+
+      <div class="strings-section">
+        <div class="section-head">
+          <h2>21 弦定弦对照</h2>
+          <span id="tuningLabel">D 调 · 第 21 弦 → 第 1 弦</span>
+        </div>
+        <div id="strings" class="strings"></div>
+        <p class="footer-note">自动模式会把检测到的音高匹配到最接近的目标弦。点击某根弦可手动锁定；再次选择“自动识别”即可恢复自动模式。</p>
+      </div>
+    </section>
+
+    <aside class="help">
+      <h3>调音小提示</h3>
+      <p><b>偏低：</b>当前音低于目标音，需要适当拧紧弦轴，让音高升高。</p>
+      <p><b>偏高：</b>当前音高于目标音，需要适当拧松弦轴，让音高降低。</p>
+      <p><b>拾音更稳定：</b>一次只拨一根空弦，尽量靠近麦克风；避开说话、其他弦共振和环境噪声。古筝调音请小幅、缓慢转动弦轴。</p>
+      <p id="browserTip">麦克风需要浏览器授权；建议通过 localhost 或 HTTPS 打开本页面。</p>
+    </aside>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+      const A4 = 440;
+      const TUNINGS = {
+        // 每组五根弦按 D2 起始的五声音阶排列；末尾为第 1 弦 D6（A 调为 C#6）。
+        D: { label: 'D 调', offsets: [0, 2, 4, 7, 9] },
+        G: { label: 'G 调', offsets: [0, 2, 5, 7, 9] },
+        C: { label: 'C 调', offsets: [0, 2, 5, 7, 10] },
+        F: { label: 'F 调', offsets: [0, 3, 5, 7, 10] },
+        A: { label: 'A 调', offsets: [-1, 2, 4, 7, 9] }
+      };
+      const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+      const el = id => document.getElementById(id);
+      const keySelect = el('keySelect');
+      const stringSelect = el('stringSelect');
+      const micButton = el('micButton');
+      const statusLine = el('statusLine');
+      const stringsEl = el('strings');
+      let tuningKey = 'D';
+      let targets = [];
+      let audioContext = null;
+      let analyser = null;
+      let mediaStream = null;
+      let sourceNode = null;
+      let rafId = null;
+      let lastProcessAt = 0;
+      let lastDetectedAt = 0;
+      let history = [];
+      let smoothedPitch = null;
+      let activeString = null;
+      let isRunning = false;
+
+      function midiToName(midi) {
+        const rounded = Math.round(midi);
+        const name = NOTE_NAMES[((rounded % 12) + 12) % 12];
+        const octave = Math.floor(rounded / 12) - 1;
+        return `${name}${octave}`;
+      }
+      function midiToFreq(midi) { return A4 * Math.pow(2, (midi - 69) / 12); }
+      function buildTargets(key) {
+        const offsets = TUNINGS[key].offsets;
+        return Array.from({ length: 21 }, (_, index) => {
+          const group = Math.floor(index / 5);
+          const degree = index % 5;
+          const midi = 38 + group * 12 + offsets[degree]; // 数组顺序：21 弦到 1 弦
+          return { stringNo: 21 - index, midi, note: midiToName(midi), freq: midiToFreq(midi) };
+        });
+      }
+      function renderStrings() {
+        stringsEl.innerHTML = '';
+        targets.forEach(target => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'string-btn';
+          button.dataset.string = String(target.stringNo);
+          button.innerHTML = `<span class="num">${target.stringNo} 弦</span><span class="pitch">${target.note}</span>`;
+          button.addEventListener('click', () => {
+            stringSelect.value = String(target.stringNo);
+            updateActiveString(target.stringNo);
+            if (smoothedPitch) updateReadout(smoothedPitch);
+          });
+          stringsEl.appendChild(button);
+        });
+        el('tuningLabel').textContent = `${TUNINGS[tuningKey].label} · 第 21 弦 → 第 1 弦`;
+        updateActiveString(activeString);
+      }
+      function updateActiveString(stringNo) {
+        activeString = stringNo;
+        document.querySelectorAll('.string-btn').forEach(button => {
+          button.classList.toggle('active', Number(button.dataset.string) === Number(stringNo));
+        });
+      }
+      function nearestTarget(freq) {
+        let best = null;
+        let minDistance = Infinity;
+        for (const target of targets) {
+          const cents = 1200 * Math.log2(freq / target.freq);
+          const distance = Math.abs(cents);
+          if (distance < minDistance) { minDistance = distance; best = { ...target, cents }; }
+        }
+        return best;
+      }
+      function formatCents(value) {
+        const sign = value > 0 ? '+' : value < 0 ? '−' : '';
+        return `${sign}${Math.round(Math.abs(value))}`;
+      }
+      function updateReadout(freq) {
+        if (!Number.isFinite(freq) || freq <= 0) return;
+        const manual = stringSelect.value !== 'auto' ? Number(stringSelect.value) : null;
+        let match = nearestTarget(freq);
+        if (manual !== null) match = targets.find(item => item.stringNo === manual);
+        const cents = 1200 * Math.log2(freq / match.freq);
+        const pitchMidi = 69 + 12 * Math.log2(freq / A4);
+        el('noteName').textContent = midiToName(pitchMidi);
+        el('frequency').textContent = `${freq.toFixed(1)} Hz`;
+        el('stringPill').textContent = manual === null ? `自动识别 · 第 ${match.stringNo} 弦` : `手动锁定 · 第 ${match.stringNo} 弦`;
+        el('targetString').textContent = `第 ${match.stringNo} 弦`;
+        el('targetNote').textContent = match.note;
+        el('targetFreq').innerHTML = `${match.freq.toFixed(2)} <small>Hz</small>`;
+        el('cents').innerHTML = `${formatCents(cents)} <small>音分</small>`;
+        const bounded = Math.max(-50, Math.min(50, cents));
+        el('needle').style.left = `${50 + bounded}%`;
+        const verdict = el('verdict');
+        verdict.className = 'verdict';
+        if (Math.abs(cents) <= 5) {
+          verdict.classList.add('good');
+          el('verdictTitle').textContent = '✓ 已调准';
+          el('verdictHint').textContent = '音高已进入 ±5 音分范围，可以换下一根弦';
+        } else if (cents > 5) {
+          verdict.classList.add('high');
+          el('verdictTitle').textContent = '偏高 · 请拧松';
+          el('verdictHint').textContent = '当前音高高于目标音，请小幅拧松弦轴，让音高下降';
+        } else {
+          verdict.classList.add('low');
+          el('verdictTitle').textContent = '偏低 · 请拧紧';
+          el('verdictHint').textContent = '当前音高低于目标音，请小幅拧紧弦轴，让音高上升';
+        }
+        el('statusText').textContent = `正在监听 · 识别到第 ${match.stringNo} 弦`;
+        statusLine.classList.add('active');
+        updateActiveString(match.stringNo);
+      }
+      function clearMeasurementForSilence() {
+        el('noteName').textContent = '—';
+        el('frequency').textContent = '— Hz';
+        el('stringPill').textContent = '等待识别';
+        el('cents').innerHTML = '— <small>音分</small>';
+        el('needle').style.left = '50%';
+        el('targetString').textContent = '—';
+        el('targetNote').textContent = '—';
+        el('targetFreq').innerHTML = '— <small>Hz</small>';
+        el('verdict').className = 'verdict wait';
+        el('verdictTitle').textContent = '等待琴声';
+        el('verdictHint').textContent = '拨响一根琴弦后会自动恢复识别';
+        el('statusText').textContent = '正在监听 · 请拨响一根琴弦';
+        updateActiveString(null);
+      }
+      function resetReadout() {
+        el('noteName').textContent = '—';
+        el('frequency').textContent = '— Hz';
+        el('stringPill').textContent = '等待识别';
+        el('cents').innerHTML = '— <small>音分</small>';
+        el('needle').style.left = '50%';
+        el('targetString').textContent = '—';
+        el('targetNote').textContent = '—';
+        el('targetFreq').innerHTML = '— <small>Hz</small>';
+        el('verdict').className = 'verdict wait';
+        el('verdictTitle').textContent = '等待琴声';
+        el('verdictHint').textContent = '请先开启麦克风，再单独拨响一根空弦';
+        el('statusText').textContent = '开启麦克风后，拨响一根琴弦即可开始识别';
+        statusLine.classList.remove('active');
+        updateActiveString(null);
+      }
+
+      // YIN 音高检测：比直接寻找波形峰值更不容易被古筝丰富的泛音误导。
+      function detectPitch(buffer, sampleRate) {
+        const size = buffer.length;
+        let mean = 0;
+        for (let i = 0; i < size; i++) mean += buffer[i];
+        mean /= size;
+        let rms = 0;
+        const centered = new Float32Array(size);
+        for (let i = 0; i < size; i++) {
+          const value = buffer[i] - mean;
+          centered[i] = value;
+          rms += value * value;
+        }
+        rms = Math.sqrt(rms / size);
+        if (rms < 0.008) return null;
+
+        const minFreq = 65;
+        const maxFreq = 1350;
+        const minTau = Math.max(2, Math.floor(sampleRate / maxFreq));
+        const maxTau = Math.min(Math.floor(sampleRate / minFreq), Math.floor(size / 2));
+        const compareLength = size - maxTau;
+        const difference = new Float32Array(maxTau + 1);
+        const cmnd = new Float32Array(maxTau + 1);
+        let runningSum = 0;
+        for (let tau = 1; tau <= maxTau; tau++) {
+          let sum = 0;
+          for (let i = 0; i < compareLength; i++) {
+            const delta = centered[i] - centered[i + tau];
+            sum += delta * delta;
+          }
+          difference[tau] = sum;
+          runningSum += sum;
+          cmnd[tau] = runningSum > 0 ? (sum * tau) / runningSum : 1;
+        }
+        const threshold = 0.16;
+        let tauEstimate = -1;
+        for (let tau = minTau; tau <= maxTau; tau++) {
+          if (cmnd[tau] < threshold) {
+            while (tau + 1 <= maxTau && cmnd[tau + 1] < cmnd[tau]) tau++;
+            tauEstimate = tau;
+            break;
+          }
+        }
+        if (tauEstimate === -1) {
+          let lowest = Infinity;
+          for (let tau = minTau; tau <= maxTau; tau++) {
+            if (cmnd[tau] < lowest) { lowest = cmnd[tau]; tauEstimate = tau; }
+          }
+          if (lowest > 0.35) return null;
+        }
+        // 抛物线插值，减少整数周期带来的频率量化误差。
+        const left = cmnd[Math.max(minTau, tauEstimate - 1)];
+        const center = cmnd[tauEstimate];
+        const right = cmnd[Math.min(maxTau, tauEstimate + 1)];
+        const denominator = 2 * (2 * center - right - left);
+        const shift = Math.abs(denominator) > 1e-9 ? (right - left) / denominator : 0;
+        const refinedTau = tauEstimate + Math.max(-1, Math.min(1, shift));
+        const frequency = sampleRate / refinedTau;
+        return frequency >= minFreq && frequency <= maxFreq ? frequency : null;
+      }
+
+      function processAudio(timestamp) {
+        if (!isRunning || !analyser) return;
+        rafId = requestAnimationFrame(processAudio);
+        if (timestamp - lastProcessAt < 55) return;
+        lastProcessAt = timestamp;
+        const data = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(data);
+        const pitch = detectPitch(data, audioContext.sampleRate);
+        if (pitch === null) {
+          history = [];
+          if (timestamp - lastDetectedAt > 1200) {
+            if (smoothedPitch !== null) {
+              smoothedPitch = null;
+              clearMeasurementForSilence();
+            } else {
+              el('statusText').textContent = '正在监听 · 请拨响一根琴弦';
+            }
+          }
+          return;
+        }
+        lastDetectedAt = timestamp;
+        history.push(pitch);
+        if (history.length > 5) history.shift();
+        const sorted = [...history].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        smoothedPitch = median;
+        updateReadout(median);
+      }
+
+      async function startMic() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          el('statusText').textContent = '当前页面无法访问麦克风，请使用最新版 Chrome / Edge，并通过 localhost 或 HTTPS 打开。';
+          el('statusText').classList.add('error');
+          return;
+        }
+        try {
+          micButton.disabled = true;
+          micButton.textContent = '正在请求权限…';
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+          });
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          audioContext = new AudioContextClass();
+          if (audioContext.state === 'suspended') await audioContext.resume();
+          sourceNode = audioContext.createMediaStreamSource(mediaStream);
+          analyser = audioContext.createAnalyser();
+          analyser.fftSize = 4096;
+          analyser.smoothingTimeConstant = 0;
+          sourceNode.connect(analyser);
+          history = [];
+          smoothedPitch = null;
+          isRunning = true;
+          micButton.disabled = false;
+          micButton.textContent = '关闭麦克风';
+          micButton.classList.add('stop');
+          statusLine.classList.add('active');
+          el('statusText').classList.remove('error');
+          el('statusText').textContent = '麦克风已开启 · 请拨响一根空弦';
+          rafId = requestAnimationFrame(processAudio);
+        } catch (error) {
+          micButton.disabled = false;
+          micButton.textContent = '开启麦克风';
+          const message = error && error.name === 'NotAllowedError'
+            ? '麦克风权限被拒绝。请在浏览器地址栏的站点设置中允许麦克风后重试。'
+            : error && error.name === 'NotFoundError'
+              ? '没有检测到可用麦克风。请连接麦克风或检查系统输入设备。'
+              : `无法开启麦克风：${error.message || error}`;
+          el('statusText').textContent = message;
+          el('statusText').classList.add('error');
+        }
+      }
+      async function stopMic() {
+        isRunning = false;
+        if (rafId) cancelAnimationFrame(rafId);
+        if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+        if (sourceNode) { try { sourceNode.disconnect(); } catch (_) {} }
+        if (audioContext) { try { await audioContext.close(); } catch (_) {} }
+        audioContext = analyser = mediaStream = sourceNode = null;
+        history = [];
+        smoothedPitch = null;
+        micButton.textContent = '开启麦克风';
+        micButton.classList.remove('stop');
+        resetReadout();
+      }
+
+      keySelect.addEventListener('change', () => {
+        tuningKey = keySelect.value;
+        targets = buildTargets(tuningKey);
+        renderStrings();
+        if (smoothedPitch) updateReadout(smoothedPitch);
+        else resetReadout();
+      });
+      stringSelect.addEventListener('change', () => {
+        const selected = stringSelect.value === 'auto' ? null : Number(stringSelect.value);
+        updateActiveString(selected);
+        if (smoothedPitch) updateReadout(smoothedPitch);
+      });
+      micButton.addEventListener('click', () => isRunning ? stopMic() : startMic());
+      window.addEventListener('beforeunload', () => {
+        if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+      });
+
+      targets = buildTargets(tuningKey);
+      renderStrings();
+      resetReadout();
+    })();
+  </script>
+</body>
+</html>
